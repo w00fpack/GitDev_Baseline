@@ -1,0 +1,9 @@
+AM_CPPFLAGS = 	-I. #	-DCUR_WORKING_DIR='"@BASE_CUR_WORKING_DIR@/test"'
+
+#AM_CFLAGS = @LIBFLTK_CFLAGS@
+#AM_CXXFLAGS = @LIBFLTK_CXXFLAGS@
+
+noinst_PROGRAMS = 	test1
+
+test1 = test1.cc
+#test1_LDADD = #	./dw/libDw-core.a #	@LIBFLTK_LIBS@ @LIBX11_LIBS@
