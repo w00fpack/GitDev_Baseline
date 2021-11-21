@@ -1,0 +1,97 @@
+name: Release with Artifacts
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  make_release:
+    name: Make Release with Binaries and Source
+    runs-on: ubuntu-20.04
+    steps:
+
+      - name: Code Checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      - name: Autoscan
+        run: autoscan && mv configure.scan configure.ac
+
+      - name: sed1
+        run: sed -i "s/AC_INIT(\[FULL-PACKAGE-NAME\], \[VERSION\], \[BUG-REPORT-ADDRESS\])/AC_INIT(\[myapp\], \[0.0.1\], \[\])/g" configure.ac
+
+      - name: sed2
+        run: sed -i "s/AC_CONFIG_HEADERS(\[config.h\])/AC_CONFIG_HEADERS(\[config.h\])\nAM_INIT_AUTOMAKE(\[-Wall -Werror foreign\])/g" configure.ac
+
+      - name: AutoReconf - for sed modifications
+        run: autoreconf -vi
+
+      - name: Configure
+        run: chmod 744 configure && ./configure
+
+      - name: Make
+        run: make
+
+      - name: Check
+        run: make check
+
+      #- name: Run distcheck
+      #  run: make distcheck
+
+      - name: Package
+        run: make install DESTDIR=./build
+
+      - name: build artifacts
+        run: cd ./build && tar -cvJf ../build_20.04.amd64.tar.xz . && cd .. && pwd &&  ls -lh *.xz
+
+      - name: Make SquashFS file
+        id: make_squashfs
+        run: mksquashfs build/ build_20.04.sfs -comp zstd -Xcompression-level 22
+
+      - name: Get App Version
+        id: version
+        run: echo "::set-output name=version::$(./myapp --version)"
+
+      - name: Build Changelog
+        id: build_changelog
+        uses: mikepenz/release-changelog-builder-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}_release # Need to append release, so that if manually using GitHub "Draft a new release" button created tag doesn't conflict with the same name
+          # release_name: ${{ steps.version.outputs.version }} # Could use from version field above
+          release_name: Release ${{ github.ref }} # Overrides if you used "Draft a new release" button > name field
+          # body_path: CHANGELOG.md
+          body: ${{steps.build_changelog.outputs.changelog}} # Overrides if you used "Draft a new release" button > body field TODO: append to body
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Artifact / Asset
+        id: upload-release-asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
+          asset_path: ./build_20.04.amd64.tar.xz
+          asset_name: build_20.04.amd64.tar.xz
+          asset_content_type: application/x-xz
+
+      - name: Upload Release Artifact / Asset SFS
+        id: upload-release-asset_sfs
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }} # pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
+          asset_path: ./build_20.04.sfs
+          asset_name: build_20.04.sfs
+          asset_content_type: application/x-xz
